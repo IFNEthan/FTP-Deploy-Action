@@ -3643,7 +3643,17 @@ class FTPSyncProvider {
             const absoluteFolderPath = "/" + (this.serverPath.startsWith("./") ? this.serverPath.replace("./", "") : this.serverPath) + folderPath;
             this.logger.all(`removing folder "${absoluteFolderPath}"`);
             if (this.dryRun === false) {
-                yield (0, utilities_1.retryRequest)(this.logger, () => __awaiter(this, void 0, void 0, function* () { return yield this.client.removeDir(absoluteFolderPath); }));
+                try {
+                    yield (0, utilities_1.retryRequest)(this.logger, () => __awaiter(this, void 0, void 0, function* () { 
+                        return yield this.client.removeDir(absoluteFolderPath); 
+                    }));
+                } catch (e) {
+                    if (e.code === types_1.ErrorCode.FileNotFoundOrNoAccess) {
+                        this.logger.standard("Folder not found or you don't have access to the folder - skipping...");
+                    } else {
+                        throw e;
+                    }
+                }
             }
             this.logger.verbose(`  completed`);
         });
