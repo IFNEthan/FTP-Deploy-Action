@@ -3236,7 +3236,7 @@ function getServerFiles(client, logger, timings, args) {
             if (args["dangerous-clean-slate"]) {
                 logger.all(`----------------------------------------------------------------`);
                 logger.all("🗑️ Removing all files on the server because 'dangerous-clean-slate' was set, this will make the deployment very slow...");
-                if (args["dry-run"] === false) {
+                if (args["dry-run"] === false && args["dry-run-with-sync"] === false) {
                     yield client.clearWorkingDir();
                 }
                 logger.all("Clear complete");
@@ -3328,7 +3328,7 @@ function deploy(args, logger, timings) {
             totalBytesUploaded = diffs.sizeUpload + diffs.sizeReplace;
             timings.start("upload");
             try {
-                const syncProvider = new syncProvider_1.FTPSyncProvider(client, logger, timings, args["local-dir"], args["server-dir"], args["state-name"], args["dry-run"]);
+                const syncProvider = new syncProvider_1.FTPSyncProvider(client, logger, timings, args["local-dir"], args["server-dir"], args["state-name"], args["dry-run"], args["dry-run-with-sync"]);
                 yield syncProvider.syncLocalToServer(diffs);
             }
             finally {
@@ -3559,7 +3559,7 @@ function ensureDir(client, logger, timings, folder) {
 }
 exports.ensureDir = ensureDir;
 class FTPSyncProvider {
-    constructor(client, logger, timings, localPath, serverPath, stateName, dryRun) {
+    constructor(client, logger, timings, localPath, serverPath, stateName, dryRun, dryRunWithSync) {
         this.client = client;
         this.logger = logger;
         this.timings = timings;
@@ -3567,6 +3567,7 @@ class FTPSyncProvider {
         this.serverPath = serverPath;
         this.stateName = stateName;
         this.dryRun = dryRun;
+        this.dryRunWithSync = dryRunWithSync;
     }
     /**
      * Converts a file path (ex: "folder/otherfolder/file.txt") to an array of folder and a file path
@@ -3602,7 +3603,7 @@ class FTPSyncProvider {
         var _a;
         return __awaiter(this, void 0, void 0, function* () {
             this.logger.all(`creating folder "${folderPath + "/"}"`);
-            if (this.dryRun === true) {
+            if (this.dryRun === true || this.dryRunWithSync === true) {
                 return;
             }
             const path = this.getFileBreadcrumbs(folderPath + "/");
@@ -3620,7 +3621,7 @@ class FTPSyncProvider {
     removeFile(filePath) {
         return __awaiter(this, void 0, void 0, function* () {
             this.logger.all(`removing "${filePath}"`);
-            if (this.dryRun === false) {
+            if (this.dryRun === false && this.dryRunWithSync === false) {
                 try {
                     yield (0, utilities_1.retryRequest)(this.logger, () => __awaiter(this, void 0, void 0, function* () { return yield this.client.remove(filePath); }));
                 }
@@ -3642,7 +3643,7 @@ class FTPSyncProvider {
         return __awaiter(this, void 0, void 0, function* () {
             const absoluteFolderPath = "/" + (this.serverPath.startsWith("./") ? this.serverPath.replace("./", "") : this.serverPath) + folderPath;
             this.logger.all(`removing folder "${absoluteFolderPath}"`);
-            if (this.dryRun === false) {
+            if (this.dryRun === false && this.dryRunWithSync === false) {
                 try {
                     yield (0, utilities_1.retryRequest)(this.logger, () => __awaiter(this, void 0, void 0, function* () { 
                         return yield this.client.removeDir(absoluteFolderPath); 
@@ -3663,7 +3664,7 @@ class FTPSyncProvider {
             const typePresent = type === "upload" ? "uploading" : "replacing";
             const typePast = type === "upload" ? "uploaded" : "replaced";
             this.logger.all(`${typePresent} "${filePath}"`);
-            if (this.dryRun === false) {
+            if (this.dryRun === false && this.dryRunWithSync === false) {
                 yield (0, utilities_1.retryRequest)(this.logger, () => __awaiter(this, void 0, void 0, function* () { return yield this.client.uploadFrom(this.localPath + filePath, filePath); }));
             }
             this.logger.verbose(`  file ${typePast}`);
@@ -3698,9 +3699,15 @@ class FTPSyncProvider {
                 yield this.removeFolder(file.name);
             }
             this.logger.all(`----------------------------------------------------------------`);
-            this.logger.all(`🎉 Sync complete. Saving current server state to "${this.serverPath + this.stateName}"`);
-            if (this.dryRun === false) {
-                yield (0, utilities_1.retryRequest)(this.logger, () => __awaiter(this, void 0, void 0, function* () { return yield this.client.uploadFrom(this.localPath + this.stateName, this.stateName); }));
+            if (this.dryRun && !this.dryRunWithSync) {
+                this.logger.all(`🎉 Sync complete. (Dry run - no changes made)`);
+            } else {
+                this.logger.all(`🎉 Sync complete. Saving current server state to "${this.serverPath + this.stateName}"`);
+                if (!this.dryRun || this.dryRunWithSync) {
+                    yield (0, utilities_1.retryRequest)(this.logger, () => __awaiter(this, void 0, void 0, function* () {
+                        return yield this.client.uploadFrom(this.localPath + this.stateName, this.stateName);
+                    }));
+                }
             }
         });
     }
@@ -3956,6 +3963,7 @@ function getDefaultSettings(withoutDefaults) {
         "log-level": (_j = withoutDefaults["log-level"]) !== null && _j !== void 0 ? _j : "standard",
         "security": (_k = withoutDefaults.security) !== null && _k !== void 0 ? _k : "loose",
         "timeout": (_l = withoutDefaults.timeout) !== null && _l !== void 0 ? _l : 30000,
+        "dry-run-with-sync": (_m = withoutDefaults.["dry-run-with-sync"]) !== null && _m !== void 0 ? _m : false,
     };
 }
 exports.getDefaultSettings = getDefaultSettings;
@@ -9069,7 +9077,8 @@ async function runDeployment() {
             "exclude": (0, parse_1.optionalStringArray)("exclude", core.getMultilineInput("exclude")),
             "log-level": (0, parse_1.optionalLogLevel)("log-level", core.getInput("log-level")),
             "security": (0, parse_1.optionalSecurity)("security", core.getInput("security")),
-            "timeout": (0, parse_1.optionalInt)("timeout", core.getInput("timeout"))
+            "timeout": (0, parse_1.optionalInt)("timeout", core.getInput("timeout")),
+            "dry-run-with-sync": (0, parse_1.optionalBoolean)("dry-run-with-sync", core.getInput("dry-run-with-sync")),
         };
         await (0, ftp_deploy_1.deploy)(args);
     }

@@ -19,7 +19,8 @@ async function runDeployment() {
       "exclude": optionalStringArray("exclude", core.getMultilineInput("exclude")),
       "log-level": optionalLogLevel("log-level", core.getInput("log-level")),
       "security": optionalSecurity("security", core.getInput("security")),
-      "timeout": optionalInt("timeout", core.getInput("timeout"))
+      "timeout": optionalInt("timeout", core.getInput("timeout")),
+      "dry-run-with-sync": optionalBoolean("dry-run-with-sync", core.getInput("dry-run-with-sync"))
     };
 
     await deploy(args);
