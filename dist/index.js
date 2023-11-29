@@ -3937,7 +3937,7 @@ class Timer {
 }
 exports.Timer = Timer;
 function getDefaultSettings(withoutDefaults) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
     if (withoutDefaults["local-dir"] !== undefined) {
         if (!withoutDefaults["local-dir"].endsWith("/")) {
             throw new Error("local-dir should be a folder (must end with /)");
