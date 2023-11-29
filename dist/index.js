@@ -3963,7 +3963,7 @@ function getDefaultSettings(withoutDefaults) {
         "log-level": (_j = withoutDefaults["log-level"]) !== null && _j !== void 0 ? _j : "standard",
         "security": (_k = withoutDefaults.security) !== null && _k !== void 0 ? _k : "loose",
         "timeout": (_l = withoutDefaults.timeout) !== null && _l !== void 0 ? _l : 30000,
-        "dry-run-with-sync": (_m = withoutDefaults.["dry-run-with-sync"]) !== null && _m !== void 0 ? _m : false,
+        "dry-run-with-sync": (_m = withoutDefaults["dry-run-with-sync"]) !== null && _m !== void 0 ? _m : false,
     };
 }
 exports.getDefaultSettings = getDefaultSettings;
