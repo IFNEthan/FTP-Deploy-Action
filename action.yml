@@ -29,6 +29,9 @@ inputs:
   dry-run:
     required: false
     description: "Prints which modifications will be made with current config options, but doesnt actually make any changes"
+  dry-run-with-sync:
+    required: false
+    description: "Prints which modifications will be made with current config options, but only updates the sync file"
   dangerous-clean-slate:
     required: false
     description: "Deletes ALL contents of server-dir, even items in excluded with exclude argument"
@@ -45,7 +48,7 @@ inputs:
     required: false
     description: "Timeout in milliseconds for FTP operations"
 runs:
-  using: "node16"
+  using: "node20"
   main: "dist/index.js"
 branding:
   icon: "upload-cloud"

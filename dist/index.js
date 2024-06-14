@@ -4140,8 +4140,8 @@ const fsStat = (0, util_1.promisify)(fs_1.stat);
 const fsOpen = (0, util_1.promisify)(fs_1.open);
 const fsClose = (0, util_1.promisify)(fs_1.close);
 const fsUnlink = (0, util_1.promisify)(fs_1.unlink);
-const LIST_COMMANDS_DEFAULT = ["LIST -a", "LIST"];
-const LIST_COMMANDS_MLSD = ["MLSD", "LIST -a", "LIST"];
+const LIST_COMMANDS_DEFAULT = () => ["LIST -a", "LIST"];
+const LIST_COMMANDS_MLSD = () => ["MLSD", "LIST -a", "LIST"];
 /**
  * High-level API to interact with an FTP server.
  */
@@ -4152,7 +4152,7 @@ class Client {
      * @param timeout  Timeout in milliseconds, use 0 for no timeout. Optional, default is 30 seconds.
      */
     constructor(timeout = 30000) {
-        this.availableListCommands = LIST_COMMANDS_DEFAULT;
+        this.availableListCommands = LIST_COMMANDS_DEFAULT();
         this.ftp = new FtpContext_1.FTPContext(timeout);
         this.prepareTransfer = this._enterFirstCompatibleMode([transfer_1.enterPassiveModeIPv6, transfer_1.enterPassiveModeIPv4]);
         this.parseList = parseList_1.parseList;
@@ -4302,7 +4302,7 @@ class Client {
         // Use MLSD directory listing if possible. See https://tools.ietf.org/html/rfc3659#section-7.8:
         // "The presence of the MLST feature indicates that both MLST and MLSD are supported."
         const supportsMLSD = features.has("MLST");
-        this.availableListCommands = supportsMLSD ? LIST_COMMANDS_MLSD : LIST_COMMANDS_DEFAULT;
+        this.availableListCommands = supportsMLSD ? LIST_COMMANDS_MLSD() : LIST_COMMANDS_DEFAULT();
         await this.send("TYPE I"); // Binary mode
         await this.sendIgnoringError("STRU F"); // Use file structure
         await this.sendIgnoringError("OPTS UTF8 ON"); // Some servers expect UTF-8 to be enabled explicitly
@@ -4437,7 +4437,10 @@ class Client {
      */
     async remove(path, ignoreErrorCodes = false) {
         const validPath = await this.protectWhitespace(path);
-        return this.send(`DELE ${validPath}`, ignoreErrorCodes);
+        if (ignoreErrorCodes) {
+            return this.sendIgnoringError(`DELE ${validPath}`);
+        }
+        return this.send(`DELE ${validPath}`);
     }
     /**
      * Report transfer progress for any upload or download to a given handler.
@@ -4646,10 +4649,12 @@ class Client {
     async removeDir(remoteDirPath) {
         return this._exitAtCurrentDirectory(async () => {
             await this.cd(remoteDirPath);
+            const absoluteDirPath = await this.pwd();
             await this.clearWorkingDir();
-            if (remoteDirPath !== "/") {
+            const dirIsRoot = absoluteDirPath === "/";
+            if (!dirIsRoot) {
                 await this.cdup();
-                await this.removeEmptyDir(remoteDirPath);
+                await this.removeEmptyDir(absoluteDirPath);
             }
         });
     }
@@ -4896,7 +4901,7 @@ var FileType;
     FileType[FileType["File"] = 1] = "File";
     FileType[FileType["Directory"] = 2] = "Directory";
     FileType[FileType["SymbolicLink"] = 3] = "SymbolicLink";
-})(FileType = exports.FileType || (exports.FileType = {}));
+})(FileType || (exports.FileType = FileType = {}));
 /**
  * Describes a file, directory or symbolic link.
  */
@@ -5003,6 +5008,9 @@ class FTPError extends Error {
     }
 }
 exports.FTPError = FTPError;
+function doNothing() {
+    /** Do nothing */
+}
 /**
  * FTPContext holds the control and data sockets of an FTP connection and provides a
  * simplified way to interact with an FTP server, handle responses, errors and timeouts.
@@ -5055,9 +5063,9 @@ class FTPContext {
             return;
         }
         this._closingError = err;
-        this.send("QUIT"); // Don't wait for an answer
+
         // Close the sockets but don't fully reset this context to preserve `this._closingError`.
-        this._closeSocket(this._socket);
+        this._closeControlSocket();
         this._closeSocket(this._dataSocket);
         // Give the user's task a chance to react, maybe cleanup resources.
         this._passToHandler(err);
@@ -5098,7 +5106,7 @@ class FTPContext {
                 this._removeSocketListeners(this.socket);
             }
             else {
-                this._closeSocket(this.socket);
+                this._closeControlSocket();
             }
         }
         if (socket) {
@@ -5307,16 +5315,23 @@ class FTPContext {
         });
     }
     /**
-     * Close a socket.
+     * Close the control socket. Sends QUIT, then FIN, and ignores any response or error.
+     */
+    _closeControlSocket() {
+        this._removeSocketListeners(this._socket);
+        this._socket.on("error", doNothing);
+        this.send("QUIT");
+        this._closeSocket(this._socket);
+    }
+    /**
+     * Close a socket, ignores any error.
      * @protected
      */
     _closeSocket(socket) {
         if (socket) {
             this._removeSocketListeners(socket);
-            socket.on("error", () => { });
-            socket.on("timeout", () => socket.destroy());
-            socket.setTimeout(this.timeout);
-            socket.end();
+            socket.on("error", doNothing);
+            socket.destroy();
         }
     }
     /**
@@ -5808,8 +5823,8 @@ function parseSize(value, info) {
  * Parsers for MLSD facts.
  */
 const factHandlersByName = {
-    "size": parseSize,
-    "sizd": parseSize,
+    "size": parseSize, // File size
+    "sizd": parseSize, // Directory size
     "unique": (value, info) => {
         info.uniqueID = value;
     },
